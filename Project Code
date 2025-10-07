@@ -1,0 +1,78 @@
+#include <ESP8266WiFi.h>   // WiFi library for ESP8266
+#include <ESP8266HTTPClient.h>
+
+// ===== Wi-Fi Credentials =====
+const char* ssid = "Your_WiFi_Name";
+const char* password = "Your_WiFi_Password";
+
+// ===== ThingSpeak or Webserver Details =====
+const char* serverURL = "http://yourserver.com/update"; // replace with your server URL
+const char* apiKey = "YOUR_API_KEY";
+
+// ===== Pin Definitions =====
+const int tempPin = A0;    // Analog pin for temperature sensor
+const int currentPin = A1; // Analog pin for CT sensor
+const int voltagePin = A2; // Analog pin for PT sensor
+const int motorPin = D1;   // Digital pin to control motor (relay or MOSFET)
+
+// ===== Variables =====
+float temperature, current, voltage;
+
+// ===== Setup =====
+void setup() {
+  Serial.begin(115200);
+  pinMode(motorPin, OUTPUT);
+
+  // Connect to Wi-Fi
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting to WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nConnected to WiFi");
+}
+
+// ===== Loop =====
+void loop() {
+  // Read Sensors
+  temperature = analogRead(tempPin) * (5.0 / 1023.0) * 100; // Example for LM35 temp sensor
+  current = analogRead(currentPin) * (5.0 / 1023.0);         // Scale based on CT calibration
+  voltage = analogRead(voltagePin) * (5.0 / 1023.0) * 230;  // Scale based on PT calibration
+
+  // Print values to Serial for debugging
+  Serial.print("Temperature: "); Serial.println(temperature);
+  Serial.print("Current: "); Serial.println(current);
+  Serial.print("Voltage: "); Serial.println(voltage);
+
+  // Motor Fault Detection (Simple Example)
+  if (temperature > 80 || current > 10 || voltage < 200) { // set your threshold values
+    digitalWrite(motorPin, LOW); // Turn off motor
+    Serial.println("Fault detected! Motor turned OFF.");
+  } else {
+    digitalWrite(motorPin, HIGH); // Turn on motor
+  }
+
+  // Send Data to Server
+  if (WiFi.status() == WL_CONNECTED) {
+    HTTPClient http;
+    String serverPath = serverURL;
+    serverPath += "?api_key=";
+    serverPath += apiKey;
+    serverPath += "&field1=" + String(temperature);
+    serverPath += "&field2=" + String(current);
+    serverPath += "&field3=" + String(voltage);
+
+    http.begin(serverPath.c_str());
+    int httpResponseCode = http.GET();
+    if (httpResponseCode > 0) {
+      Serial.println("Data sent to server successfully");
+    } else {
+      Serial.print("Error sending data: ");
+      Serial.println(httpResponseCode);
+    }
+    http.end();
+  }
+
+  delay(5000); // Delay 5 seconds before next reading
+}
